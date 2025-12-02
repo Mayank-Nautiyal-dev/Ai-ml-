@@ -1,0 +1,939 @@
+Nice — I’ll give a single, thorough, example-rich Prolog reference that you can use to write effective programs from scratch. I’ll cover core syntax and semantics, the built-ins programmers actually use, control features (cut, fail, repeat), meta-programming, lists, DCGs, I/O, modules, dynamic predicates, and more. For every feature I’ll provide 2–3 short examples (runnable in standard Prolog like SWI-Prolog). At the end I’ll include larger example programs: (1) append/3 and list utilities, (2) a family-tree example, and (3) a deep explanation of backtracking with code traces and the role of cut/fail.
+
+Because Prolog is declarative, the form of code is small but the execution model (unification + backtracking + Prolog’s search order) is crucial — I’ll emphasize that as we go.
+
+
+---
+
+1. Basic building blocks
+
+1.1 Atoms, numbers, variables, strings
+
+Atom: a literal symbol: foo, 'Hello World', ':-'/2 (operators may require quoting).
+
+Number: integer 42, float 3.14.
+
+Variable: begins with uppercase or _: X, Person, _ (anonymous).
+
+String: "abc" (in many Prologs strings are lists of codes or distinct type).
+
+
+Examples:
+
+% atoms and numbers
+likes(mary, pizza).      % 'mary' and 'pizza' are atoms
+age(john, 30).           % 30 is a number
+
+% variables
+parent(X, mary).         % X is a variable (unknown)
+_ignored(X) :- X = 1.    % _ignored is a predicate name; _ is anonymous variable
+
+% string (SWI-Prolog)
+greet("Hi, there!").
+
+1.2 Facts
+
+A fact is a predicate instance that is unconditionally true.
+
+cat(tom).
+owns(alice, car).
+
+1.3 Rules
+
+A rule: Head :- Body. Means head is true if body is true (body can have commas , for conjunction).
+
+parent(alice, bob).
+ancestor(X, Y) :- parent(X, Y).
+ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).
+
+1.4 Queries
+
+Ask the Prolog interpreter with ?- or via API. Queries succeed with variable bindings or fail.
+
+?- parent(alice, bob).         % true
+?- ancestor(alice, Who).      % Who = bob ; Who = ...
+
+
+---
+
+2. Unification and pattern matching
+
+Unification = is the core: X = 1 binds X to 1. In heads, terms match arguments.
+
+Examples:
+
+% matching structure
+f(a, b) = f(X, Y).   % X = a, Y = b
+
+% complex
+person(Name, age(Years)) = person("Mayank", age(21)).
+
+Use == for term identity (no variable binding), =.. for converting between term and list (univ, useful for meta-programming).
+
+foo =.. [f, a, b].    % foo = f(a,b)
+f(X,Y) == f(X,Y).     % true if same term & same variables (no binding)
+
+
+---
+
+3. Lists — syntax & pattern matching
+
+Lists are central: [] empty, [H|T] head-tail, [a,b,c] sugar for [a|[b|[c|[]]]].
+
+Examples:
+
+% head-tail
+first([H|_], H).
+
+% check empty
+is_empty([]).
+
+% pattern matching with fixed prefix
+starts_with([a,b|_]).
+
+Common list idioms:
+
+list_len([], 0).
+list_len([_|T], N) :- list_len(T, N1), N is N1 + 1.
+
+
+---
+
+4. Arithmetic and comparisons
+
+Use is/2 to evaluate arithmetic expression on the right: X is 2+3.
+
+Comparison operators: =:= (numeric equal), =\= (numeric not equal), > < >= =<.
+
+Use =.. and call/1 for higher-order.
+
+
+Examples:
+
+sum(A,B,Sum) :- Sum is A + B.
+greater(X,Y) :- X > Y.
+
+% numeric equality vs term equality
+?- 1 =:= 1.      % true
+?- 1 =:= 1.0.    % true (numeric)
+?- 1 == 1.0.     % false (different types/terms)
+
+Important: is/2 requires variables on left to be unbound or numeric; right side must be evaluable.
+
+
+---
+
+5. Control constructs: conjunction, disjunction, parentheses
+
+Conjunction: comma , means AND (left-to-right).
+
+Disjunction: semicolon ; means OR.
+
+Parentheses () for grouping.
+
+
+Examples:
+
+happy(X) :- rich(X), healthy(X).     % conjunction
+lucky(X) :- rich(X); famous(X).      % disjunction
+
+choose(X) :- (a, b); c.              % grouped
+
+
+---
+
+6. Negation and failure: \+ / not
+
+Prolog uses negation as failure: \+ Goal succeeds if Goal fails.
+
+Examples:
+
+not_rich(X) :- \+ rich(X).
+
+% safe use: avoid \+ with variables that remain unbound
+% bad: \+ parent(X, Y)  % unpredictable if variables are free
+
+Note: \+ is not classical negation; it depends on closed-world assumption.
+
+
+---
+
+7. Cut (!) and commit, and fail
+
+Cut !
+
+! commits to choices made so far in the clause: it prunes choice points created in the current predicate before the cut.
+
+Used to control backtracking or implement deterministic code or if-then-else idioms.
+
+
+Examples:
+
+max(X,Y,X) :- X >= Y, !.
+max(_,Y,Y).
+
+% If first clause succeeds, cut prevents trying second.
+
+Fail
+
+fail always fails (useful to force backtracking or iterate).
+
+
+force_fail :- do_something, fail.
+
+If-then-else
+
+Syntax: Cond -> Then ; Else. Equivalent to:
+
+If Cond succeeds, commit and run Then, else run Else.
+
+
+
+Examples:
+
+abs(X, Y) :- X >= 0 -> Y = X ; Y is -X.
+
+% alternative using cut
+test(X) :- condition(X), !, succeed(X).
+test(_) :- fallback.
+
+Caveats: misuse of cut can break declarativity and cause subtle bugs. Use cuts sparingly.
+
+
+---
+
+8. Backtracking — concept & examples
+
+Prolog explores the search tree left-to-right, depth-first. When a goal fails, it backtracks to the most recent choice point and tries alternatives.
+
+Example producing multiple answers:
+
+color(red).
+color(green).
+color(blue).
+
+?- color(C).  % C=red ; C=green ; C=blue ; then false
+
+Use fail to force listing all answers in a predicate:
+
+list_all_colors :-
+    color(C),
+    writeln(C),
+    fail.
+list_all_colors.  % succeeds finally
+
+Detailed backtracking with cuts shown later in the backtracking section.
+
+
+---
+
+9. Recursion and tail recursion
+
+Recursion is the main looping mechanism.
+
+Examples:
+
+% factorial
+fact(0,1).
+fact(N,F) :- N>0, N1 is N-1, fact(N1,F1), F is N*F1.
+
+% tail-recursive factorial (accumulator)
+fact_tr(N,F) :- fact_acc(N,1,F).
+fact_acc(0,Acc,Acc).
+fact_acc(N,Acc,F) :-
+    N>0, N1 is N-1, Acc1 is Acc * N, fact_acc(N1,Acc1,F).
+
+Prefer tail recursion for large depth (some Prolog implementations optimize).
+
+
+---
+
+10. Dynamic predicates: dynamic, assert/retract
+
+You can change the database at runtime.
+
+Examples:
+
+:- dynamic counter/1.
+counter(0).
+
+inc :-
+    retract(counter(N)),
+    N1 is N + 1,
+    assert(counter(N1)).
+
+% retractall/1 removes all matching clauses
+
+Caution: dynamic predicates break pure declarative style and should be used when necessary (state, caches, I/O).
+
+
+---
+
+11. Meta-programming and higher-order: call/1, =.., clause/2, assertz/1
+
+call(Goal) executes Goal, where Goal is a term.
+
+Term =.. List transforms between term and list: f(a,b) =.. [f,a,b].
+
+clause(Head, Body) inspects clauses.
+
+assertz/1 adds clause at end, asserta/1 at beginning.
+
+
+Examples:
+
+apply(Pred, X) :- Goal =.. [Pred, X], call(Goal).
+
+% Example: call(greet)
+greet(alice).
+?- apply(greet, alice).  % succeeds
+
+% clause/2
+clause(parent(X,Y), Body).  % enumerate clauses for parent/2
+
+% dynamic assert/retract
+assertz(likes(alice, chocolate)).
+
+
+---
+
+12. Built-in database inspection: listing/1, current_predicate/1
+
+Examples:
+
+?- listing(parent).
+?- current_predicate(parent/2).
+
+
+---
+
+13. Aggregation: findall/3, bagof/3, setof/3
+
+findall(Template, Goal, List) collects all Template instances (even duplicates, even if Goal has free vars — free vars get instantiated in list).
+
+bagof/3 groups answers by free variables; fails if no solution unless use ^ to existentially quantify.
+
+setof/3 like bagof/3 but sorts and removes duplicates.
+
+
+Examples:
+
+% collect all children of X
+findall(Child, parent(_, Child), Children).
+
+% bagof grouping
+bagof(Child, Parent^parent(Parent, Child), AllChildren).
+% ^ says Parent is existential, don't group by Parent
+
+% setof
+setof(Child, Parent^parent(Parent, Child), SortedUniqueChildren).
+
+
+---
+
+14. Definite Clause Grammars (DCG)
+
+DCGs are a compact notation for grammars, translated to list-consuming predicates.
+
+Syntax: sentence --> noun_phrase, verb_phrase. translates roughly to sentence(S0,S) :- noun_phrase(S0,S1), verb_phrase(S1,S).
+
+
+Examples:
+
+% simple DCG
+sentence --> noun_phrase, verb_phrase.
+noun_phrase --> [the], noun.
+verb_phrase --> verb, noun_phrase.
+noun --> [cat] | [dog].
+verb --> [chased] | [saw].
+
+% usage:
+% ?- phrase(sentence, [the,cat,chased,the,dog]).
+
+DCGs also support DCG arguments: expr(Value) --> term(T), "+", expr(E), { Value is T+E }. etc.
+
+
+---
+
+15. Modules and namespaces
+
+Prolog supports modules (e.g., :- module(mymod, [pred/1]).), allowing export/import and name isolation. Exact syntax varies slightly per Prolog.
+
+Examples (SWI style):
+
+:- module(math_utils, [fact/2]).
+
+fact(0,1).
+fact(N,F) :- N>0, N1 is N-1, fact(N1,F1), F is N * F1.
+
+Importing:
+
+:- use_module(library(lists)). % load standard library
+
+
+---
+
+16. Input / Output
+
+write/1, writeln/1, format/2/format/3.
+
+Reading terms with read/1, read_line_to_codes/2, or read_string/3.
+
+File I/O: open/3, close/1, read/2, write/2.
+
+
+Examples:
+
+hello :- write('Hello, world'), nl.
+
+save_terms(File) :-
+    open(File, write, Out),
+    write(Out, foo(bar)), write(Out, '.'), nl(Out),
+    close(Out).
+
+
+---
+
+17. Exceptions: throw/1 and catch/3
+
+Examples:
+
+danger :- throw(error(bad_thing)).
+
+safe_call(Goal) :-
+    catch(Goal, Error, (writeln(Error), fail)).
+
+catch(Goal, Caught, Handler) runs Goal, on exception unify exception with Caught and run Handler.
+
+
+---
+
+18. Multi-clause predicates and clause order
+
+Order matters: Prolog tries clauses top-to-bottom. So the order of facts/rules affects search and performance.
+
+Example:
+
+p :- q.       % first tried
+p :- r.       % tried only if above fails/backtracks
+
+
+---
+
+19. Operator declarations
+
+Define custom operators with op/3: precedence, associativity and name.
+
+Examples:
+
+:- op(500, xfy, '::').  % defines infix operator ::
+
+head :: tail :- writeln(head).
+% then you can write: a :: b.
+
+Common built-in operators: :-, ?-, ,, ;, etc.
+
+
+---
+
+20. Term and type testing: var/1, nonvar/1, atomic/1, compound/1, integer/1, float/1, atom/1
+
+Examples:
+
+is_var(X) :- var(X).
+is_atom(A) :- atom(A).
+is_compound(T) :- compound(T).
+
+Useful in meta-programs and guards.
+
+
+---
+
+21. =.. (univ), functor/3, arg/3
+
+Term =.. List convert between term and list form.
+
+functor(Term, Name, Arity) gives name/arity, or creates term with that arity and fresh args.
+
+arg(N, Term, Arg) access N-th argument.
+
+
+Examples:
+
+?- f(a,b) =.. L.    % L = [f,a,b]
+?- functor(X, foo, 2). % X = foo(_,_)
+?- arg(2, foo(a,b,c), V). % V = b
+
+
+---
+
+22. Constraining—CLP(FD) and constraint programming
+
+Many Prologs provide constraint libraries (clpfd) for finite domain constraints: use_module(library(clpfd)). Use #=/2, #>/2, label/1 etc.
+
+Examples (SWI-Prolog clpfd):
+
+:- use_module(library(clpfd)).
+
+p(X, Y) :-
+    X in 1..10,
+    Y in 1..10,
+    X + Y #= 10,
+    label([X,Y]).
+
+Constraint programming is more declarative and avoids explicit is/2 arithmetic.
+
+
+---
+
+23. Tabling (memoization) — table / :- table (implementation dependent)
+
+Some Prologs (XSB, and SWI-Prolog with tabling) support memoization to avoid infinite loops and improve performance. Syntax varies.
+
+Example (SWI):
+
+:- table fib/2.
+fib(0,0).
+fib(1,1).
+fib(N,F) :- N>1, N1 is N-1, N2 is N-2, fib(N1,F1), fib(N2,F2), F is F1 + F2.
+
+If your Prolog supports tabling, use it to speed up dynamic programming problems.
+
+
+---
+
+24. Concurrency & threads (implementation specific)
+
+Some Prologs like SWI provide threads: thread_create/3, message queues etc. Usage varies by system.
+
+Examples (SWI):
+
+% create a thread to run goal
+?- thread_create(do_work, Id, []).
+
+
+---
+
+25. Libraries and common modules
+
+Prolog systems typically ship with libraries: lists, apply, ordsets, clpfd, library(http), etc. Learn to use use_module/1.
+
+Examples:
+
+:- use_module(library(lists)).
+?- member(X,[a,b,c]).
+
+
+---
+
+26. Style & best practices (short)
+
+Prefer pure predicates (no side-effects) where possible.
+
+Use meaningful predicate names and arities.
+
+Keep clauses deterministic if possible (use cuts purposefully).
+
+Use :- dynamic only when required.
+
+Use DCGs for parsing/text.
+
+Use findall/bagof/setof carefully to manage variable scoping.
+
+
+
+---
+
+27. Examples (2–3 short examples per major feature) — quick reference
+
+I'll group these so you can copy-paste and run them.
+
+Facts & Rules
+
+likes(mia, coffee).
+likes(sam, tea).
+
+drinks(X) :- likes(X, coffee).
+drinks(X) :- likes(X, tea).
+
+Unification & =..
+
+% create a term dynamically
+mk_term(Name, Args, Term) :- Term =.. [Name | Args].
+% call
+% ?- mk_term(foo, [a,b], T), call(T).
+
+Lists & pattern matching
+
+second([_,B|_], B).
+
+concat([], L, L).
+concat([H|T], L, [H|R]) :- concat(T, L, R).
+
+Arithmetic & comparisons
+
+increment(X,Y) :- Y is X + 1.
+between(X) :- X >= 1, X =< 10.
+
+Negation \+ and fail
+
+not_member(_, []).
+not_member(X, [H|T]) :- X \= H, not_member(X, T).
+
+print_all :-
+    item(I), writeln(I), fail.
+print_all.
+
+Cut !
+
+grade(Mark, pass) :- Mark >= 50, !.
+grade(_, fail).
+
+DCG example
+
+s --> [hello], [world].
+% ?- phrase(s, [hello,world]).
+
+
+---
+
+28. Larger example programs
+
+A. append/3 and list utilities
+
+Standard append/3, member/2, reverse/2 (naive & accumulator version)
+
+% append/3: append(List1, List2, Result)
+append([], L, L).
+append([H|T], L2, [H|R]) :- append(T, L2, R).
+
+% member/2
+member(X, [X|_]).
+member(X, [_|T]) :- member(X, T).
+
+% naive reverse (not tail-recursive)
+reverse_naive([], []).
+reverse_naive([H|T], R) :-
+    reverse_naive(T, RT),
+    append(RT, [H], R).
+
+% tail-recursive reverse
+reverse_tr(L, R) :- rev_acc(L, [], R).
+rev_acc([], Acc, Acc).
+rev_acc([H|T], Acc, R) :- rev_acc(T, [H|Acc], R).
+
+Test:
+
+?- append([1,2],[3,4],R).   % R = [1,2,3,4]
+?- reverse_tr([1,2,3], X).  % X = [3,2,1]
+
+B. Family tree example (facts, rules, querying, and negation)
+
+Facts:
+
+% facts
+male(john).
+male(paul).
+female(mary).
+female(anne).
+
+parent(john, paul).
+parent(mary, paul).
+parent(paul, alice).
+parent(anne, bob).
+
+% rules
+father(X,Y) :- parent(X,Y), male(X).
+mother(X,Y) :- parent(X,Y), female(X).
+
+grandparent(GP, GC) :- parent(GP, P), parent(P, GC).
+
+sibling(X,Y) :- parent(P, X), parent(P, Y), X \= Y.
+
+More relations:
+
+ancestor(X, Y) :- parent(X, Y).
+ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).
+
+% spouse (symmetric)
+spouse(john, mary).
+spouse(mary, john).
+
+Queries:
+
+?- father(F, paul).      % F = john.
+?- sibling(paul, Who).   % Who = ... (none in this small set)
+?- grandparent(john, Who). % Who = alice.
+
+Add \+ examples:
+
+only_child(X) :- \+ (sibling(X, _)).
+
+C. Backtracking in detail — trace of execution, demonstration of ! and fail
+
+Problem: select a safe route from A to D using simple graph edges; show backtracking & cuts.
+
+Graph and naive route search:
+
+% graph edges
+edge(a,b).
+edge(a,c).
+edge(b,d).
+edge(c,d).
+edge(b,c).
+
+% naive path finder (may produce cycles if not careful)
+path(X, Y, [X,Y]) :- edge(X,Y).
+path(X, Y, [X|Rest]) :-
+    edge(X, Z),
+    path(Z, Y, Rest).
+
+If you query ?- path(a, d, P). Prolog will:
+
+1. Try edge(a,b) then recursively path(b,d,P2) — finds [b,d] — so returns P = [a,b,d].
+
+
+2. On user asking for more answers (;), Prolog backtracks and tries alternative edges like edge(a,c) and finds P = [a,c,d].
+
+
+3. It may also try edge(b,c) routes etc.
+
+
+
+Now avoid cycles by tracking visited nodes:
+
+path_safe(X, Y, Path) :- path_safe(X, Y, [X], Path).
+path_safe(X, X, _, [X]).
+path_safe(X, Y, Visited, [X|Rest]) :-
+    edge(X, Z),
+    \+ member(Z, Visited),
+    path_safe(Z, Y, [Z|Visited], Rest).
+
+Demonstrate ! to prefer a shortest-choice first (deterministic decision)
+
+Suppose we have taxi fare rules and if fare < 50 then cheap, else expensive. Use cut to avoid extra checks.
+
+fare_class(Fare, cheap) :- Fare < 50, !.
+fare_class(_, expensive).
+
+If Fare < 50 succeeds, ! prevents trying the second clause.
+
+Example showing fail for printing all solutions
+
+print_paths(A,B) :-
+    path_safe(A,B,P),
+    writeln(P),
+    fail.
+print_paths(_, _). % succeed after listing all
+
+This predicate prints each path by forcing backtracking with fail, then final clause ensures predicate succeeds.
+
+
+---
+
+29. More example programs (useful patterns)
+
+Sorting using built-in sort/2
+
+?- sort([3,1,2,2,1], L). % L = [1,2,3]
+
+Using findall to collect solutions
+
+all_children(P, Kids) :- findall(C, parent(P,C), Kids).
+
+Simple parser with DCG (parsing numbers and sum)
+
+:- use_module(library(dcg/basics)).
+
+int(N) --> integer(N).
+sum(S) --> int(A), "+", int(B), { S is A + B }.
+% ?- phrase(sum, "12+30").
+
+
+---
+
+30. Debugging and tracing
+
+Use trace. or gtrace (graphical) in systems like SWI-Prolog to step through resolution, see choice points, calls, exits, redo, fail.
+
+spy(Pred/Arity) sets a breakpoint.
+
+leash/1 controls stopping on call/exit/fail/redo.
+
+
+Examples:
+
+?- trace, path(a,d,P).
+
+This prints each invocation and backtracking step so you can understand why and how Prolog searches.
+
+
+---
+
+31. Performance tips
+
+Use indexing-friendly heads (first argument often).
+
+Avoid unnecessary choice points; use cuts where logically safe to remove them.
+
+Prefer tail recursion for large lists; use accumulators.
+
+Use once/1 or cuts to ensure determinism when you only want first solution.
+
+For heavy combinatorial search, apply constraint libraries like clpfd.
+
+
+
+---
+
+32. Prolog dialect differences to be aware of
+
+Built-in libraries names/flags differ (SWI, GNU, YAP, SICStus).
+
+Tabling or multi-threading may not be available everywhere.
+
+DCG and clpfd often available in modern Prologs (SWI, SICStus).
+
+Operator precedence and quoting rules may vary slightly.
+
+
+(These are practical notes — if you target a specific Prolog, check its manual for system-specific features.)
+
+
+---
+
+33. Full worked examples (copyable, complete)
+
+33.1 append/3 and useful list functions (full file)
+
+% list_utils.pl
+% append/3
+append([], L, L).
+append([H|T], L2, [H|R]) :- append(T, L2, R).
+
+% member/2
+member(X, [X|_]).
+member(X, [_|T]) :- member(X, T).
+
+% reverse (tail recursive)
+reverse(L,R) :- rev_acc(L, [], R).
+rev_acc([], Acc, Acc).
+rev_acc([H|T], Acc, R) :- rev_acc(T, [H|Acc], R).
+
+% maplist example: increment every number
+map_increment([], []).
+map_increment([H|T], [H1|T1]) :- H1 is H + 1, map_increment(T, T1).
+
+Test:
+
+?- append([1,2],[3],X).
+X = [1,2,3].
+
+?- map_increment([1,2,3], R).
+R = [2,3,4].
+
+33.2 Family tree with queries and examples (full file)
+
+% family.pl
+male(john).
+male(paul).
+female(mary).
+female(anne).
+female(alice).
+male(bob).
+
+parent(john, paul).
+parent(mary, paul).
+parent(paul, alice).
+parent(anne, bob).
+parent(paul, bob).
+
+father(X, Y) :- parent(X, Y), male(X).
+mother(X, Y) :- parent(X, Y), female(X).
+
+sibling(X, Y) :- parent(P, X), parent(P, Y), X \= Y.
+
+% find cousins (children of siblings)
+cousin(X, Y) :- parent(PX, X), parent(PY, Y), sibling(PX, PY).
+
+% ancestor
+ancestor(X, Y) :- parent(X, Y).
+ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).
+
+Sample queries to try:
+
+?- father(F, paul).           % F = john
+?- ancestor(john, Who).       % find descendants
+?- cousin(alice, Who).        % discover cousins
+
+33.3 Backtracking demo with trace and cut
+
+% backtrack_demo.pl
+edge(a,b).
+edge(a,c).
+edge(b,c).
+edge(c,d).
+edge(b,d).
+
+% naive path (may loop)
+path_naive(X,Y,[X,Y]) :- edge(X,Y).
+path_naive(X,Y,[X|Rest]) :- edge(X,Z), path_naive(Z,Y,Rest).
+
+% safe path using visited
+path(X,Y,Path) :- path(X,Y,[X],Rev), reverse(Rev, Path).
+path(X,X,Visited,Visited).
+path(X,Y,Visited,Result) :-
+    edge(X,Z),
+    \+ member(Z,Visited),
+    path(Z,Y,[Z|Visited],Result).
+
+% deterministic route: prefer direct neighbors and use cut
+route(X,Y,P) :- edge(X,Y), !, P = [X,Y].   % if direct edge, commit
+route(X,Y,P) :- edge(X,Z), route(Z,Y,PR), P = [X|PR].
+
+Run:
+
+?- path(a,d,P).  % will find many, backtracking shows alternatives
+?- route(a,d,P). % shows behavior with cut
+
+
+---
+
+34. Quick reference summary (cheat-sheet)
+
+Facts: pred(a).
+
+Rule: head :- body1, body2.
+
+Query: ?- goal.
+
+Unification: =, check identity ==.
+
+Arithmetic: is, =:=, =\=, <, >.
+
+Lists: [], [H|T], [a,b,c].
+
+Negation: \+ Goal.
+
+Cut: ! (prunes alternatives, use carefully).
+
+Fail: fail (forces backtracking).
+
+DCG: head --> tokens., use phrase/2.
+
+Meta: call/1, =.., clause/2.
+
+Dynamic: :- dynamic pred/arity. then assertz/1, retract/1.
+
+I/O: write/1, read/1, open/3.
+
+Aggregation: findall/3, bagof/3, setof/3.
+
+Debug: trace, spy/1.
+
+Modules: :- module(name, [exported/arity]).
+
+
+
+---
+
