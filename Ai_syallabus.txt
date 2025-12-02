@@ -260,3 +260,389 @@ Unit V: read Chapter 27 (vision) overview and Chapter 28 (ethics & safety) caref
 Sources I used (from your uploads)
 
 The course Guidelines (explicit mapping of units →
+
+Nice — I’ll dive deep and show how things work, step-by-step with small, exam/practice examples. I’ll stick to topics the guideline asked for and expand them: systematic (uninformed + informed) search, local/search optimization, adversarial (minimax + α-β), CSPs (with heuristics & AC-3), chaining (forward/backward), unification & resolution, and Unit IV NLP parsing up to Recursive Transition Networks — each with worked demos you can follow. This is long but focused so you can study or copy examples into paper for the exam. Ready? Let’s go.
+
+Quick notation and reminders
+
+b = branching factor (max children per node).
+
+d = depth of shallowest solution.
+
+g(n) = path cost to node n.
+
+h(n) = heuristic estimate of remaining cost (used in A*).
+
+In examples I'll use small graphs, tiny games, or tiny grammars so steps are tractable.
+
+
+
+---
+
+1. Problem formulation (short)
+
+Before any search, define:
+
+State representation (what information matters).
+
+Initial state.
+
+Actions / successor function (how states change).
+
+Goal test (when to stop).
+
+Path cost (optional; often number of steps or sum of action costs).
+
+
+Example (tiny): Graph nodes {A,B,C,D}, edges A→B (1), A→C (2), B→D (1), C→D (1). Start=A, goal=D.
+
+
+---
+
+2. Uninformed (blind) search algorithms — inner workings + example
+
+2.1 Breadth-First Search (BFS)
+
+Strategy: expand shallowest unexpanded node first (FIFO queue).
+
+Properties: complete (if finite branching), optimal when step cost = 1 for each action.
+
+Time/Space: O(b^d) — both.
+
+
+Demo (graph above, unit cost 1):
+
+Queue initially: [A]
+
+1. Expand A → enqueue B, C → Queue [B, C]
+
+
+2. Expand B → enqueue D → Queue [C, D]
+
+
+3. Expand C → enqueue D (but usually mark visited) → Queue [D]
+
+
+4. Expand D → goal found.
+
+
+
+BFS finds path A→B→D (length 2). If both paths length equal, depends on order.
+
+
+---
+
+2.2 Depth-First Search (DFS)
+
+Strategy: expand deepest node last expanded (stack or recursion).
+
+Properties: not guaranteed to find shortest path; can get stuck in infinite paths (unless depth limit).
+
+Time: O(b^m) where m=maximum depth; Space: O(bm) (linear in depth).
+
+
+Demo (same graph):
+
+Stack: [A]
+
+1. Expand A → push C then B? (order matters). If push C then B, stack top B → go deeper... If choose B first: A→B→D found quickly. If choose C first and graph had big depth, DFS could go deep.
+
+
+
+
+---
+
+2.3 Depth-Limited Search (DLS) / Iterative Deepening (ID)
+
+DLS: DFS with max depth L. Useful to avoid infinite descent.
+
+Iterative Deepening DFS (IDDFS): repeated DLS with increasing limits 0..d. Combines BFS optimality with DFS space advantage. Time similar to BFS for exponential trees.
+
+
+
+---
+
+2.4 Uniform-Cost Search (UCS)
+
+Strategy: expand node with lowest path cost g(n) (priority queue by g).
+
+Properties: complete (if step costs positive), optimal (returns minimal-cost path).
+
+Time/Space exponential in general.
+
+
+Demo (graph with costs: A→B (1), A→C (2), B→D (5), C→D (2)):
+
+Priority queue by cost:
+
+1. Expand A (g=0) → add B(g=1), C(g=2)
+
+
+2. Expand B (g=1) → add D(g=6)
+
+
+3. Expand C (g=2) → add D(g=4)
+
+
+4. Next expand D with g=4 (cheapest D), so path A→C→D chosen (cost 4), optimal.
+
+
+
+
+---
+
+3. Informed (heuristic) search — inner workings + examples
+
+3.1 Greedy Best-First Search
+
+Uses heuristic h(n) and selects node with smallest h.
+
+Not optimal. Fast but can be fooled by bad heuristic.
+
+Think “closest according to heuristic” (no regard for path cost so far).
+
+
+Demo (straight-line distance heuristic in navigation): start=A, goal=D
+
+If heuristic estimates: h(A)=3, h(B)=2, h(C)=1, h(D)=0. Greedy expands A→C→D maybe, but could follow wrong route if h misleads.
+
+
+---
+
+3.2 A* Search — the gold standard
+
+f(n) = g(n) + h(n). Expand node with lowest f.
+
+Admissible heuristic: never overestimates true cost to goal → A* optimal.
+
+Consistent (monotonic): h(n) ≤ c(n,a,n') + h(n') ensures f-values nondecreasing along path, enabling efficient implementation.
+
+
+Demo (graph with costs, and heuristic = straight-line dist)
+
+Same costed graph as UCS demo. Suppose h estimates: h(A)=3, h(B)=5, h(C)=2, h(D)=0 Start with f(A)=0+3=3 → expand A → B (g=1, f=6), C(g=2,f=4) Next expand C (lowest f=4) → add D(g=4, f=4) — solution found with cost 4 → optimal.
+
+Step-by-step with open list (priority queue by f):
+
+Open: [A(f=3)]
+
+Expand A → add B(f=6), C(f=4) → Open [C(4), B(6)]
+
+Expand C → add D(f=4), B remains → Open [D(4), B(6)]
+
+Expand D → found goal; because f=4 matches g=4 minimal cost.
+
+
+
+---
+
+4. Local search & optimization (no complete path stored) — inner workings + examples
+
+Local search keeps a single current state and modifies it iteratively.
+
+4.1 Hill-Climbing (Greedy Local Search)
+
+Evaluate neighbor states and move to the neighbor with better evaluation (higher utility or lower cost).
+
+Stops at local maxima/minima (plateaus), not guaranteed global optimum.
+
+
+Demo — maximize simple function f(x)=−(x−3)^2 + 10 (peak at x=3)
+
+Start x=0, neighbors = {x±1}. Evaluate:
+
+x=0 → neighbors −1,1 → pick best (1) if better, keep moving until x=3 reached. Works for unimodal functions.
+
+
+Demo — N-Queens (constructive hill climb)
+
+State: positions of N queens, one per column. Neighbors: move a queen within its column to other rows.
+
+Evaluation: negative number of pairs attacking (or −attacks).
+
+Procedure: move queen to reduce conflicts; when stuck in local minimum, use random restarts.
+
+
+
+---
+
+4.2 Simulated Annealing
+
+Like hill climbing but occasionally accepts worse moves with probability exp(−ΔE/T) where T is temperature decreasing over time. Allows escape from local optima.
+
+Temperature schedule is critical.
+
+
+Demo — same N-Queens; if stuck, temperature allows jumps out of plateau.
+
+
+---
+
+4.3 Genetic Algorithms (brief)
+
+Population of candidate solutions, selection by fitness, crossover, mutation.
+
+Useful for poorly-behaved search spaces.
+
+
+
+---
+
+5. Adversarial search: Minimax and α-β pruning — inner workings + example
+
+5.1 Minimax (perfect information, zero-sum two-player)
+
+Players: MAX and MIN alternate moves. Each terminal state has utility U.
+
+Minimax value V(n): if MAX to move: max over children V(child); if MIN: min over children.
+
+Root action = child with value equal to V(root).
+
+
+Tiny Demo — Tic-Tac-Toe partial tree
+
+Simpler: minimax tree for a 2-ply game (MAX at root):
+
+Root (MAX)
+        /     \
+     A         B
+    / \       / \
+  A1  A2    B1  B2
+ U: 3   5   2   4
+
+Compute bottom-up:
+
+A's children A1=3, A2=5 → A (MIN to move?) careful: define players per level. If levels: root (MAX), next MIN, leaves terminal with utilities for MAX. Suppose root (MAX) chooses between A and B; at A, MIN chooses min(3,5)=3 → value(A)=3. At B, MIN chooses min(2,4)=2 → value(B)=2. Root MAX chooses max(3,2)=3 → selects A. So MAX picks the branch with value 3.
+
+
+Step-by-step:
+
+1. Evaluate terminal utilities.
+
+
+2. Backpropagate minima/maxima depending on player at that node.
+
+
+3. Choose child giving optimum for MAX.
+
+
+
+
+---
+
+5.2 Alpha-Beta pruning
+
+α = best already explored option along path to MAX (lower bound).
+
+β = best already explored option along path to MIN (upper bound).
+
+If α ≥ β, prune remaining siblings (cannot influence outcome).
+
+
+Demo (small tree):
+
+Use the previous tree but expand order such that many branches pruned. The idea is: when evaluating one branch gives a good lower bound for MAX that is ≥ best possible for sibling under MIN, sibling can't help.
+
+Alpha-beta gives same minimax result but with fewer node evaluations.
+
+
+---
+
+6. Constraint Satisfaction Problems (CSPs) — inner workings + worked example
+
+6.1 CSP basics
+
+Variables X1..Xn, each with domain Di. Constraints restrict allowed combinations.
+
+Solve by search (assign variables) + inference (prune inconsistent values).
+
+
+Example: Map coloring — regions {WA, NT, SA, Q, NSW}, colors {Red, Green, Blue}, constraints: adjacent regions != same color. (A classic).
+
+
+---
+
+6.2 Backtracking search (basic)
+
+Assign variables one by one, backtrack on conflict.
+
+
+Step demo (WA, NT, SA) with ordering WA, NT, SA:
+
+1. WA=Red.
+
+
+2. NT must != WA → can be Green or Blue. Choose Green.
+
+
+3. SA must != WA and != NT (i.e., not Red, not Green) → choose Blue. Success for these three.
+
+
+
+If SA had no legal color, backtrack to NT pick different color.
+
+
+---
+
+6.3 Heuristics to speed CSP solving
+
+a) MRV — Minimum Remaining Values (choose variable with fewest legal values)
+
+Reduces branching early.
+
+
+b) Degree heuristic (tie-breaker) — choose variable involved in most constraints with unassigned variables.
+
+c) Least Constraining Value — when picking a value for a variable, prefer value that rules out the fewest choices in neighbors.
+
+d) Forward Checking
+
+After assigning a variable, eliminate inconsistent values from neighbors’ domains. If any neighbor’s domain becomes empty → backtrack immediately.
+
+
+d) Maintaining Arc Consistency (MAC) / AC-3
+
+Arc consistency: for every pair (Xi, Xj) and for every value a in domain Xi, there exists some b in domain Xj such that constraint (Xi=a, Xj=b) satisfied. If not, remove a.
+
+AC-3 algorithm: repeated queue of arcs; when domain of Xi changes, re-enqueue arcs (Xk, Xi) to recheck.
+
+
+Demo — simple binary CSP (X, Y domains {1,2,3}; constraint X < Y)
+
+Start domains: X:{1,2,3}, Y:{1,2,3} Check arc (X,Y): remove x-values with no y s.t. x<y → X can be 1 or 2 (3 eliminated). Now (Y,X) check: remove y-values with no x s.t. x<y → y must be 2 or 3 (1 eliminated). Continue until stable.
+
+AC-3 prunes domains before search → massive speedups.
+
+
+---
+
+6.4 Example: 4-Queens CSP (classic local search and CSP encoding)
+
+Variables: Q1..Q4 representing row of queen in each column (domain {1..4}).
+
+Constraints: no two queens attack → rows differ and |col_i − col_j| ≠ |row_i − row_j|.
+
+Use local search (hill climbing with restarts) or CSP backtracking with MRV/forward checking.
+
+
+
+---
+
+7. Logical inference: forward chaining, backward chaining, unification, resolution — with examples
+
+We’ll use a small knowledge base about family relations.
+
+Knowledge (Horn rules & facts)
+
+1. Parent(alice, bob).  (alice is parent of bob)
+
+
+2. Parent(bob, carol).
+
+
+3. Parent(alice, david).
+
+
+4. Ancestor(x, y) :- Parent(x, y). 5
+
+
